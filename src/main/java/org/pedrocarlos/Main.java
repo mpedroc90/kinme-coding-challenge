@@ -21,7 +21,12 @@ import picocli.CommandLine;
 public class Main {
 
     // Register Operators
-    private static final List<TransformerOperation> transformOperations = Arrays.asList(new CapitalizeTransformer(), new NegativeTransformer(), new ReverseTransformer(), new ReverseNumbersTransformer());
+    private static final List<TransformerOperation> transformOperations = Arrays.asList(
+            new CapitalizeTransformer(),
+            new NegativeTransformer(),
+            new ReverseTransformer(),
+            new ReverseNumbersTransformer()
+    );
 
     public static void main(String[] args) {
 

@@ -4,14 +4,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-
-import org.mockito.internal.matchers.Any;
 import org.pedrocarlos.core.FileTransformerExecutor;
 import org.pedrocarlos.core.InputType;
 import org.pedrocarlos.core.Operation;
 import org.pedrocarlos.core.TransformersExecutorOptions;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
