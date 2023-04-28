@@ -1,9 +1,16 @@
 package org.pedrocarlos;
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.util.concurrent.Callable;
+import java.util.Arrays;
+import java.util.List;
+import org.pedrocarlos.core.FileTransformerExecutor;
+import org.pedrocarlos.statitics.Statistics;
+import org.pedrocarlos.statitics.ReadAndWriteStreamWithStatistics;
+import org.pedrocarlos.app.FileTransformerCommandLine;
+import org.pedrocarlos.core.operations.CapitalizeTransformer;
+import org.pedrocarlos.core.operations.NegativeTransformer;
+import org.pedrocarlos.core.operations.ReverseNumbersTransformer;
+import org.pedrocarlos.core.operations.ReverseTransformer;
+import org.pedrocarlos.core.operations.TransformerOperation;
 import picocli.CommandLine;
 
 /**
@@ -13,13 +20,16 @@ import picocli.CommandLine;
  */
 public class Main {
 
-    public static void main(String[] args) throws IOException {
-        // add your code here
+    // Register Operators
+    private static final List<TransformerOperation> transformOperations = Arrays.asList(new CapitalizeTransformer(), new NegativeTransformer(), new ReverseTransformer(), new ReverseNumbersTransformer());
 
+    public static void main(String[] args) {
 
-          // DO NOT CHANGE THE FOLLOWING LINES OF CODE
-        System.out.println(String.format("Processed %d lines (%d of which were unique)", //
+        new CommandLine(new FileTransformerCommandLine(new FileTransformerExecutor(transformOperations, new ReadAndWriteStreamWithStatistics()))).execute(args);
+
+//          // DO NOT CHANGE THE FOLLOWING LINES OF CODE
+        System.out.printf("Processed %d lines (%d of which were unique)%n", //
                 Statistics.getInstance().getNoOfLinesRead(), //
-                Statistics.getInstance().getNoOfUniqueLines()));
+                Statistics.getInstance().getNoOfUniqueLines());
     }
 }
