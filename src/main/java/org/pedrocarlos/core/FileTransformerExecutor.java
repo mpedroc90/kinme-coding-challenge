@@ -68,37 +68,43 @@ public final class FileTransformerExecutor {
      * @param input           The input file.
      * @param output          The output file.
      * @param numberOfThreads number of threads
-     * @param function        The UnaryOperator to apply to each line of the input file.
+     * @param transformerFunction   The UnaryOperator to transform  each line of the input file.
      * @throws IOException if an I/O error occurs.
      */
-    private void pipe(File input, File output, int numberOfThreads, UnaryOperator<String> function) throws IOException, InterruptedException {
+    private void pipe(File input, File output, int numberOfThreads, UnaryOperator<String> transformerFunction) throws IOException, InterruptedException {
 
-        var executor = Executors.newFixedThreadPool(numberOfThreads);
+        /*
+         * Splits the input file into chunks for each thread, processes the chunks in parallel, and stores the output of each
+         * chunk in a temporary file. Once all chunks have been processed, the temporary files are streamed in order to the final output.
+         */
+
 
         var chunksDelimiters = getChunksDelimiters(numberOfThreads, input);
 
+        var temporalFiles = new ArrayList<File>();
 
-        List<File> temporalFiles = new ArrayList<>();
-
+        /* Process chunks in parallel */
+        var executor = Executors.newFixedThreadPool(numberOfThreads);
         for (var chunkDelimiter : chunksDelimiters) {
             final var temporalFile = File.createTempFile("temporal-transformed-chunk-thread-" + chunkDelimiter.start(), "");
             temporalFiles.add(temporalFile);
-            executor.execute(() -> pipeChunk(input, chunkDelimiter, temporalFile, function));
+            executor.execute(() -> pipeChunk(input, chunkDelimiter, temporalFile, transformerFunction));
 
         }
-
         executor.shutdown();
         executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
 
+        /* Join all temporal files and build the final output */
         try (var writer = readAndWriteStreamFactory.getStreamWriter(output)) {
-            AtomicBoolean firstElement = new AtomicBoolean(true);
+
+            var firstLineProcessed= new AtomicBoolean(true); // boolean to
             for (var temporalFile : temporalFiles) {
                 try (var lines = Files.lines(temporalFile.toPath())) {
                     lines.forEach(line -> {
-                        if(!firstElement.get()) {
+                        if(!firstLineProcessed.get()) {
                             writer.println();
                         }
-                        firstElement.set(false);
+                        firstLineProcessed.set(false);
                         writer.print(line);
                     });
                 }
@@ -109,30 +115,52 @@ public final class FileTransformerExecutor {
     }
 
 
+    /**
+     * Returns a list of chunk delimiters that can be used to split a file into chunks
+     * for parallel processing.
+     * It guaranties that every chunks start and end with a whole line.
+     *
+     * @param numberOfThreads the number of threads that will be used to process the file
+     * @param input the file to split into chunks
+     * @return a list of chunk delimiters
+     * @throws IOException if an I/O error occurs while reading the file
+     */
     private List<ChunkDelimiter> getChunksDelimiters(int numberOfThreads, File input) throws IOException {
         var chunkSize = input.length() / numberOfThreads;
 
 
         var chunkDelimiters = new ArrayList<ChunkDelimiter>();
-
         long start = 0L;
         while (start < input.length()) {
             long end = start + chunkSize;
+
             try (var reader = Files.newBufferedReader(input.toPath())) {
                 reader.skip(end);
                 var line = reader.readLine();
                 end = (line == null) ? input.length() : end + line.getBytes().length;
-
                 chunkDelimiters.add(new ChunkDelimiter(start, Math.min(end, input.length())));
             }
+
             start = end + 1;
         }
         return chunkDelimiters;
     }
 
-    private void pipeChunk(File input, ChunkDelimiter chunkDelimiter, File outPutFile, UnaryOperator<String> function) {
+
+    /**
+     * Processes a chunk of a file by applying a function to each line of text in the chunk,
+     * and writing the transformed lines to an output file.
+     *
+     * @param input the input file to read the chunk from
+     * @param chunkDelimiter the chunk delimiter object that specifies the start and end positions
+     *                        of the chunk within the input file
+     * @param outputFile the output file to write the transformed lines to
+     * @param function the unary operator function to apply to each line of text in the chunk
+     * @throws RuntimeException if an I/O error occurs while reading from or writing to the files
+     */
+    private void pipeChunk(File input, ChunkDelimiter chunkDelimiter, File outputFile, UnaryOperator<String> function) {
         try (var reader = readAndWriteStreamFactory.getStreamReader(input)) {
-            try (var writer = Files.newBufferedWriter(outPutFile.toPath())) {
+            try (var writer = Files.newBufferedWriter(outputFile.toPath())) {
                 reader.skip(chunkDelimiter.start);
                 var accumulator = chunkDelimiter.start;
                 while (accumulator < chunkDelimiter.end) {
