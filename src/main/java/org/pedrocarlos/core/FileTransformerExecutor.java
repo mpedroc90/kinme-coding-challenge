@@ -4,8 +4,13 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import org.pedrocarlos.core.operations.TransformerOperation;
@@ -48,25 +53,109 @@ public final class FileTransformerExecutor {
 
         var transformers = findTransformer(options.operations(), options.inputType());
         var transformer = createTransformerPipeline(transformers);
-        pipe(options.input(), options.output(), transformer);
+
+        try {
+            pipe(options.input(), options.output(), options.threads(), transformer);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
 
     /**
      * Applies the given UnaryOperator to each line of the input file, and writes the transformed lines to the output file.
      *
-     * @param input    The input file.
-     * @param output   The output file.
-     * @param function The UnaryOperator to apply to each line of the input file.
+     * @param input           The input file.
+     * @param output          The output file.
+     * @param numberOfThreads number of threads
+     * @param function        The UnaryOperator to apply to each line of the input file.
      * @throws IOException if an I/O error occurs.
      */
-    private void pipe(File input, File output, UnaryOperator<String> function) throws IOException {
-        try (BufferedReader reader = readAndWriteStreamFactory.getStreamReader(input)) {
-            try (PrintStream writer = readAndWriteStreamFactory.getStreamWriter(output)) {
-                reader.lines().map(function).forEach(writer::println);
+    private void pipe(File input, File output, int numberOfThreads, UnaryOperator<String> function) throws IOException, InterruptedException {
+
+        var executor = Executors.newFixedThreadPool(numberOfThreads);
+
+        var chunksDelimiters = getChunksDelimiters(numberOfThreads, input);
+
+
+        List<File> temporalFiles = new ArrayList<>();
+
+        for (var chunkDelimiter : chunksDelimiters) {
+            final var temporalFile = File.createTempFile("temporal-transformed-chunk-thread-" + chunkDelimiter.start(), "");
+            temporalFiles.add(temporalFile);
+            executor.execute(() -> pipeChunk(input, chunkDelimiter, temporalFile, function));
+
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+
+        try (var writer = readAndWriteStreamFactory.getStreamWriter(output)) {
+            AtomicBoolean firstElement = new AtomicBoolean(true);
+            for (var temporalFile : temporalFiles) {
+                try (var lines = Files.lines(temporalFile.toPath())) {
+                    lines.forEach(line -> {
+                        if(!firstElement.get()) {
+                            writer.println();
+                        }
+                        firstElement.set(false);
+                        writer.print(line);
+                    });
+                }
+                writer.flush();
             }
         }
+
     }
+
+
+    private List<ChunkDelimiter> getChunksDelimiters(int numberOfThreads, File input) throws IOException {
+        var chunkSize = input.length() / numberOfThreads;
+
+
+        var chunkDelimiters = new ArrayList<ChunkDelimiter>();
+
+        long start = 0L;
+        while (start < input.length()) {
+            long end = start + chunkSize;
+            try (var reader = Files.newBufferedReader(input.toPath())) {
+                reader.skip(end);
+                var line = reader.readLine();
+                end = (line == null) ? input.length() : end + line.getBytes().length;
+
+                chunkDelimiters.add(new ChunkDelimiter(start, Math.min(end, input.length())));
+            }
+            start = end + 1;
+        }
+        return chunkDelimiters;
+    }
+
+    private void pipeChunk(File input, ChunkDelimiter chunkDelimiter, File outPutFile, UnaryOperator<String> function) {
+        try (var reader = readAndWriteStreamFactory.getStreamReader(input)) {
+            try (var writer = Files.newBufferedWriter(outPutFile.toPath())) {
+                reader.skip(chunkDelimiter.start);
+                var accumulator = chunkDelimiter.start;
+                while (accumulator < chunkDelimiter.end) {
+
+                    var line = reader.readLine();
+
+                    if (line == null) break;
+                    accumulator += line.getBytes().length + 1;
+                    var result = function.apply(line);
+
+                    writer.write(String.format("%-10s %s", result, Thread.currentThread().getId()));
+                    writer.newLine();
+
+                }
+                writer.flush();
+            }
+
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 
     /**
      * High order function that creates a pipeline of TransformerOperations by applying each {@link TransformerOperation} to the output of the previous operation.
@@ -91,36 +180,25 @@ public final class FileTransformerExecutor {
      * constructor of this class.
      *
      * @param operations lists of operations that transformers must match
-     * @param type inputType that transformers must match
+     * @param type       inputType that transformers must match
      * @return the filtered list of transformer operations.
      */
-    private List<TransformerOperation> findTransformer(
-            List<Operation> operations,
-            InputType type
-    ) {
-        return operations
-                .stream()
-                .map(operation -> findTransformer(operation, type))
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toList());
-
-}
-
+    private List<TransformerOperation> findTransformer(List<Operation> operations, InputType type) {
+        return operations.stream().map(operation -> findTransformer(operation, type)).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList());
+    }
 
     /**
      * Find a transformer from  {@link #transformerOperations } given {@link Operation} and {@link InputType} provided,
      *
      * @param operation operation that transformers must match
-     * @param type inputType that transfomers must match
+     * @param type      inputType that transfomers must match
      * @return the transformer if it matches with the criteria in form of {@link Optional<TransformerOperation>>}
      */
-    private Optional<TransformerOperation> findTransformer(Operation operation, InputType type){
-        return transformerOperations
-                .stream()
-                .filter(operator -> operator.getOperation().equals(operation))
-                .filter(operator -> operator.supportedTypes().contains(type))
-                .findFirst();
+    private Optional<TransformerOperation> findTransformer(Operation operation, InputType type) {
+        return transformerOperations.stream().filter(operator -> operator.getOperation().equals(operation)).filter(operator -> operator.supportedTypes().contains(type)).findFirst();
+    }
+
+    private record ChunkDelimiter(long start, long end) {
     }
 
 }

@@ -26,7 +26,7 @@ public class Statistics {
 	 * @param line
 	 *            A new line that has been read from the input file.
 	 */
-	public void updateStatisticsWithLine(final String line) {
+	public synchronized void updateStatisticsWithLine(final String line) {
 		lineCounter++;
 		linesRead.add(line);
 	}
