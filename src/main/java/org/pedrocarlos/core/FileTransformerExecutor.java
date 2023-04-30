@@ -28,7 +28,7 @@ public final class FileTransformerExecutor {
     /**
      * Constructs a FileTransformerExecutor with the given list of {@link TransformerOperation} and {@link ReadAndWriteStreamAbstractFactory}.
      *
-     * @param transformerOperations List of {@link TransformerOperation} that can be applied to the input file.
+     * @param transformerOperations     List of {@link TransformerOperation} that can be applied to the input file.
      * @param readAndWriteStreamFactory Factory for obtaining the appropriate {@link BufferedReader} and {@link PrintStream} for stream the file.
      */
     public FileTransformerExecutor(List<TransformerOperation> transformerOperations, ReadAndWriteStreamAbstractFactory readAndWriteStreamFactory) {
@@ -46,7 +46,7 @@ public final class FileTransformerExecutor {
      */
     public void execute(TransformersExecutorOptions options) throws IOException {
 
-        var transformers = filterTransformers(options);
+        var transformers = findTransformer(options.operations(), options.inputType());
         var transformer = createTransformerPipeline(transformers);
         pipe(options.input(), options.output(), transformer);
     }
@@ -55,8 +55,8 @@ public final class FileTransformerExecutor {
     /**
      * Applies the given UnaryOperator to each line of the input file, and writes the transformed lines to the output file.
      *
-     * @param input The input file.
-     * @param output The output file.
+     * @param input    The input file.
+     * @param output   The output file.
      * @param function The UnaryOperator to apply to each line of the input file.
      * @throws IOException if an I/O error occurs.
      */
@@ -69,11 +69,10 @@ public final class FileTransformerExecutor {
     }
 
     /**
-     *
-     * Creates a pipeline of TransformerOperations by applying each {@link TransformerOperation} to the output of the previous operation.
+     * High order function that creates a pipeline of TransformerOperations by applying each {@link TransformerOperation} to the output of the previous operation.
      *
      * @param transformerOperations The list of {@link TransformerOperation} to be applied.
-     * @return The UnaryOperator representing the pipeline of TransformerOperations.
+     * @return a function in form of {@link UnaryOperator<String>} that represents the pipeline
      */
     private UnaryOperator<String> createTransformerPipeline(List<TransformerOperation> transformerOperations) {
         return line -> {
@@ -87,16 +86,41 @@ public final class FileTransformerExecutor {
     }
 
     /**
-
-     Filters the list of {@link TransformerOperation} objects based on the {@link TransformersExecutorOptions} provided,
-     by matching the operation and supported types with those defined in the list of transformer operations passed to the
-     constructor of this class.
-     @param options the options for filtering the list of transformer operations.
-     @return the filtered list of transformer operations.
+     * Filters {@link #transformerOperations } based on {@link List<Operation>} and {@link InputType}  provided,
+     * by matching the operations and supported types with those defined in the list of transformer operations passed to the
+     * constructor of this class.
+     *
+     * @param operations lists of operations that transformers must match
+     * @param type inputType that transformers must match
+     * @return the filtered list of transformer operations.
      */
-    private List<TransformerOperation> filterTransformers(TransformersExecutorOptions options) {
-        return options.operations().stream().map(operation -> transformerOperations.stream().filter(operators -> operators.getOperation().equals(operation) && operators.supportedTypes().contains(options.inputType())
+    private List<TransformerOperation> findTransformer(
+            List<Operation> operations,
+            InputType type
+    ) {
+        return operations
+                .stream()
+                .map(operation -> findTransformer(operation, type))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList());
 
-        ).findFirst()).filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList());
+}
+
+
+    /**
+     * Find a transformer from  {@link #transformerOperations } given {@link Operation} and {@link InputType} provided,
+     *
+     * @param operation operation that transformers must match
+     * @param type inputType that transfomers must match
+     * @return the transformer if it matches with the criteria in form of {@link Optional<TransformerOperation>>}
+     */
+    private Optional<TransformerOperation> findTransformer(Operation operation, InputType type){
+        return transformerOperations
+                .stream()
+                .filter(operator -> operator.getOperation().equals(operation))
+                .filter(operator -> operator.supportedTypes().contains(type))
+                .findFirst();
     }
+
 }
