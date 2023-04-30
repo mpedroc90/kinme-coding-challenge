@@ -1,13 +1,10 @@
-package org.pedrocarlos.statitics;
+package org.pedrocarlos.statistics;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.FileReader;
-import java.io.PrintStream;
 import org.pedrocarlos.core.ReadAndWriteStreamAbstractFactory;
-import org.pedrocarlos.statitics.BufferedReaderWithStatistics;
 
 public final class ReadAndWriteStreamWithStatistics implements ReadAndWriteStreamAbstractFactory {
     @Override

@@ -1,4 +1,4 @@
-package org.pedrocarlos.statitics;
+package org.pedrocarlos.statistics;
 
 import java.util.HashSet;
 import java.util.Set;

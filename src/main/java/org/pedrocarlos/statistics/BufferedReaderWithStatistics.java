@@ -1,4 +1,4 @@
-package org.pedrocarlos.statitics;
+package org.pedrocarlos.statistics;
 
 import java.io.BufferedReader;
 import java.io.IOException;
