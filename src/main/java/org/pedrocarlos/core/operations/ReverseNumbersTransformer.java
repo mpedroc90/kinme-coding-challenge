@@ -23,7 +23,8 @@ public class ReverseNumbersTransformer implements TransformerOperation {
         StringBuilder builder = new StringBuilder();
 
         int charIndex = line.length() - 1;
-        while (line.charAt(charIndex) == '0') charIndex--;
+
+        while (charIndex>=0 && line.charAt(charIndex) == '0') charIndex--;
 
        for (; charIndex >= 0 && (
                line.charAt(charIndex) >= '0' && line.charAt(charIndex) <= '9' || line.charAt(charIndex) == '.'); charIndex--) {
